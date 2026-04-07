@@ -38,6 +38,17 @@ def decode_uploaded_image(file_bytes: bytes):
     return image
 
 
+def _decorate_image_result(result):
+    return {
+        **result,
+        "input_kind": "image",
+        "sampled_frames": 1,
+        "analyzed_frames": 1,
+        "selected_frame_index": 0 if result["detected"] else None,
+        "validation_note": "Single image analyzed.",
+    }
+
+
 def _build_frame_result(image, plate_number, plate):
     normalized_plate = plate_number.strip().upper() if plate_number else ""
     bbox = None
@@ -60,6 +71,7 @@ def _build_frame_result(image, plate_number, plate):
         "bbox": bbox,
         "image_width": int(image.shape[1]),
         "image_height": int(image.shape[0]),
+        "selected_frame_image": image,
     }
 
 
@@ -192,19 +204,19 @@ def _sample_video_frames(file_bytes: bytes, filename: str | None = None):
 
 
 def detect_plate_in_image(file_bytes: bytes):
-    image = decode_uploaded_image(file_bytes)
-    if image is None:
-        raise ValueError("Uploaded file is not a valid image.")
+    return detect_plates_in_images([file_bytes])[0]
 
-    result = _detect_candidates_in_frames([image])[0]
-    return {
-        **result,
-        "input_kind": "image",
-        "sampled_frames": 1,
-        "analyzed_frames": 1,
-        "selected_frame_index": 0 if result["detected"] else None,
-        "validation_note": "Single image analyzed.",
-    }
+
+def detect_plates_in_images(file_bytes_list: list[bytes]):
+    images = []
+    for index, file_bytes in enumerate(file_bytes_list, start=1):
+        image = decode_uploaded_image(file_bytes)
+        if image is None:
+            raise ValueError(f"Uploaded file #{index} is not a valid image.")
+        images.append(image)
+
+    results = _detect_candidates_in_frames(images)
+    return [_decorate_image_result(result) for result in results]
 
 
 def detect_plate_in_video(file_bytes: bytes, filename: str | None = None):

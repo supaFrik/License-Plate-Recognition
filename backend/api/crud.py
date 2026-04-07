@@ -164,6 +164,8 @@ def create_detection(db: Session, detection: schemas.DetectionCreate):
         plate_number=plate_number,
         confidence=detection.confidence,
         visitor_type=visitor_type,
+        input_kind=detection.input_kind,
+        capture_path=detection.capture_path,
     )
     db.add(db_detection)
     db.commit()

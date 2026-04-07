@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCcw } from "lucide-react";
+import { Image as ImageIcon, RefreshCcw, Video } from "lucide-react";
 
 import Layout from "@/components/Layout";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -12,6 +12,7 @@ import {
   CameraListResponse,
   DetectionListResponse,
   VisitorType,
+  getMediaUrl,
   readApiError,
 } from "@/lib/api";
 
@@ -160,6 +161,7 @@ export default function History() {
             <table className="w-full min-w-[900px]">
               <thead className="bg-background/80">
                 <tr className="text-left text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                  <th className="px-4 py-3 font-medium">Capture</th>
                   <th className="px-4 py-3 font-medium">Plate</th>
                   <th className="px-4 py-3 font-medium">Visitor type</th>
                   <th className="px-4 py-3 font-medium">Confidence</th>
@@ -173,6 +175,31 @@ export default function History() {
                     className="border-t border-border/80 text-sm text-foreground"
                     key={detection.id}
                   >
+                    <td className="px-4 py-4">
+                      {detection.capture_url ? (
+                        <div className="group relative h-16 w-28 overflow-hidden rounded-xl border border-border bg-background/60">
+                          <img
+                            alt={`Detection ${detection.plate_number}`}
+                            className="h-full w-full object-cover transition duration-200 group-hover:scale-105"
+                            src={getMediaUrl(detection.capture_url) ?? undefined}
+                          />
+                          <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-slate-950/95 via-slate-950/60 to-transparent px-2 pb-2 pt-6 text-[10px] uppercase tracking-[0.2em] text-slate-200">
+                            <span className="truncate">
+                              {detection.input_kind}
+                            </span>
+                            {detection.input_kind === "video" ? (
+                              <Video className="h-3.5 w-3.5" />
+                            ) : (
+                              <ImageIcon className="h-3.5 w-3.5" />
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex h-16 w-28 items-center justify-center rounded-xl border border-border bg-background/40 text-muted-foreground">
+                          <ImageIcon className="h-4 w-4" />
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-4 font-mono text-base">
                       {detection.plate_number}
                     </td>

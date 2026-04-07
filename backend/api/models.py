@@ -53,6 +53,8 @@ class Detection(Base):
     plate_number = Column(String(50), index=True, nullable=False)
     confidence = Column(Float, nullable=False)
     visitor_type = Column(Enum(VisitorType), nullable=False)
+    input_kind = Column(String(20), default="image", nullable=False)
+    capture_path = Column(String(512), nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     camera = relationship("Camera", back_populates="detections")

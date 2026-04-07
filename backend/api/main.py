@@ -2,6 +2,8 @@ import logging
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 try:
@@ -9,6 +11,7 @@ try:
     from auth import ensure_bootstrap_admin, get_current_user, require_admin, warm_detection_model
     from config import get_settings
     from database import engine, get_db
+    from media import MEDIA_ROOT
     from routers.auth import router as auth_router
     from routers.detection import router as detection_compat_router
     from routers.detections import router as detections_router
@@ -18,6 +21,7 @@ except ImportError:
     from .auth import ensure_bootstrap_admin, get_current_user, require_admin, warm_detection_model
     from .config import get_settings
     from .database import engine, get_db
+    from .media import MEDIA_ROOT
     from .routers.auth import router as auth_router
     from .routers.detection import router as detection_compat_router
     from .routers.detections import router as detections_router
@@ -26,6 +30,32 @@ except ImportError:
 
 logging.basicConfig(level=logging.INFO)
 settings = get_settings()
+
+
+def ensure_detection_capture_columns() -> None:
+    inspector = inspect(engine)
+    if "detections" not in inspector.get_table_names():
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("detections")}
+    with engine.begin() as connection:
+        if "input_kind" not in existing_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE detections "
+                    "ADD COLUMN input_kind VARCHAR(20) NOT NULL DEFAULT 'image'"
+                )
+            )
+        if "capture_path" not in existing_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE detections "
+                    "ADD COLUMN capture_path VARCHAR(512) NULL"
+                )
+            )
+
+
+ensure_detection_capture_columns()
 models.Base.metadata.create_all(bind=engine)
 
 for table in models.Base.metadata.tables.values():
@@ -49,6 +79,7 @@ app.include_router(auth_router)
 app.include_router(vehicles_router)
 app.include_router(detections_router)
 app.include_router(detection_compat_router)
+app.mount("/media/detections", StaticFiles(directory=MEDIA_ROOT), name="detection-media")
 
 
 @app.on_event("startup")

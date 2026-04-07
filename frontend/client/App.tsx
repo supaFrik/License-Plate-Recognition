@@ -1,6 +1,7 @@
 import "./global.css";
 
 import { AuthProvider, useAuth } from "@/lib/auth";
+import LoadingScreen from "@/components/LoadingScreen";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -31,22 +32,6 @@ const queryClient = new QueryClient({
     },
   },
 });
-
-function LoadingScreen() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-6">
-      <div className="w-full max-w-sm rounded-2xl border border-border bg-card px-8 py-10 shadow-2xl shadow-black/20">
-        <div className="mb-4 h-2 w-24 rounded-full bg-primary/70" />
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          VietPlateAI
-        </h1>
-        <p className="mt-3 text-sm text-muted-foreground">
-          Establishing a secure operator session.
-        </p>
-      </div>
-    </div>
-  );
-}
 
 function RootRedirect() {
   const { status } = useAuth();

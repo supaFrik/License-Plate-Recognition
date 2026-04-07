@@ -13,6 +13,7 @@ import {
   Clock3,
   Film,
   Image as ImageIcon,
+  Layers3,
   RefreshCcw,
   ShieldAlert,
   Upload,
@@ -27,10 +28,15 @@ import { useAuth } from "@/lib/auth";
 import {
   CameraListResponse,
   Detection,
+  DetectionRecognizeBatchResponse,
   DetectionLiveResponse,
   DetectionRecognizeResponse,
   readApiError,
 } from "@/lib/api";
+
+type RecognitionMutationResult =
+  | { mode: "single"; payload: DetectionRecognizeResponse }
+  | { mode: "batch"; payload: DetectionRecognizeBatchResponse };
 
 function formatDateTime(timestamp: string) {
   return new Date(timestamp).toLocaleString();
@@ -76,6 +82,14 @@ function isVideoFile(file: File | null) {
   return Boolean(file?.type?.startsWith("video/"));
 }
 
+function isImageFile(file: File | null) {
+  return Boolean(file?.type?.startsWith("image/"));
+}
+
+function revokePreviewUrls(urls: string[]) {
+  urls.forEach((url) => URL.revokeObjectURL(url));
+}
+
 function MediaPreview({
   previewUrl,
   file,
@@ -117,16 +131,41 @@ function MediaPreview({
   );
 }
 
+function PreviewTile({
+  file,
+  previewUrl,
+}: {
+  file: File;
+  previewUrl: string;
+}) {
+  return (
+    <div className="group relative overflow-hidden rounded-2xl border border-border bg-card/70">
+      <img
+        alt={file.name}
+        className="aspect-[4/3] h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+        src={previewUrl}
+      />
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/95 via-slate-950/65 to-transparent px-3 pb-3 pt-8">
+        <div className="truncate text-sm font-medium text-white">{file.name}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function RecognitionConsole() {
   const queryClient = useQueryClient();
   const { authFetch } = useAuth();
   const isVisible = usePageVisibility();
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [selectedCameraId, setSelectedCameraId] = useState("");
   const [lastResult, setLastResult] = useState<DetectionRecognizeResponse | null>(
     null,
   );
+  const [lastBatchResult, setLastBatchResult] =
+    useState<DetectionRecognizeBatchResponse | null>(null);
   const [liveDetections, setLiveDetections] = useState<Detection[]>([]);
   const [pollingError, setPollingError] = useState<string | null>(null);
   const latestIdRef = useRef(0);
@@ -144,17 +183,40 @@ export default function RecognitionConsole() {
   });
 
   const recognizeMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedFile) {
-        throw new Error("Choose an image or video before running recognition.");
+    mutationFn: async (): Promise<RecognitionMutationResult> => {
+      if (!selectedFiles.length) {
+        throw new Error("Choose one or more images before running recognition.");
       }
 
       const formData = new FormData();
-      formData.append("file", selectedFile);
       if (selectedCameraId) {
         formData.append("camera_id", selectedCameraId);
       }
 
+      if (selectedFiles.length > 1) {
+        if (selectedFiles.some((file) => !isImageFile(file))) {
+          throw new Error(
+            "Batch recognition currently supports image files only.",
+          );
+        }
+        selectedFiles.forEach((file) => {
+          formData.append("files", file);
+        });
+
+        const response = await authFetch("/detections/recognize/batch", {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) {
+          throw new Error(await readApiError(response));
+        }
+        return {
+          mode: "batch",
+          payload: (await response.json()) as DetectionRecognizeBatchResponse,
+        };
+      }
+
+      formData.append("file", selectedFiles[0]);
       const response = await authFetch("/detections/recognize", {
         method: "POST",
         body: formData,
@@ -162,29 +224,73 @@ export default function RecognitionConsole() {
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      return (await response.json()) as DetectionRecognizeResponse;
+      return {
+        mode: "single",
+        payload: (await response.json()) as DetectionRecognizeResponse,
+      };
     },
-    onSuccess: (payload) => {
-      setLastResult(payload);
-      if (payload.detection) {
-        latestIdRef.current = Math.max(latestIdRef.current, payload.detection.id);
-        startTransition(() => {
-          setLiveDetections((current) =>
-            mergeDetections([payload.detection as Detection], current),
+    onSuccess: (result) => {
+      if (result.mode === "batch") {
+        const payload = result.payload;
+        setLastBatchResult(payload);
+        setLastResult(null);
+
+        const detectedItems = payload.items
+          .map((item) => item.detection)
+          .filter((detection): detection is Detection => Boolean(detection));
+
+        if (detectedItems.length) {
+          latestIdRef.current = Math.max(
+            latestIdRef.current,
+            ...detectedItems.map((item) => item.id),
           );
-        });
-        toast(describeVehicleStatus(payload.detection as Detection));
-      } else {
+          startTransition(() => {
+            setLiveDetections((current) =>
+              mergeDetections([...detectedItems].reverse(), current),
+            );
+          });
+        }
+
         toast({
-          title:
-            payload.input_kind === "video"
-              ? "No plate validated from video"
-              : "No plate detected",
-          description:
-            payload.validation_note ??
-            "The uploaded media did not produce a plate match.",
+          title: "Batch recognition complete",
+          description: `Processed ${payload.total_files} images. ${payload.detected_count} detections were saved.`,
         });
+
+        const bannedCount = detectedItems.filter(
+          (item) => item.visitor_type === "BANNED",
+        ).length;
+        if (bannedCount > 0) {
+          toast({
+            title: "Banned vehicles identified in batch",
+            description: `${bannedCount} banned vehicle${bannedCount > 1 ? "s were" : " was"} detected in this upload.`,
+            variant: "destructive",
+          });
+        }
+      } else {
+        const payload = result.payload;
+        setLastResult(payload);
+        setLastBatchResult(null);
+        if (payload.detection) {
+          latestIdRef.current = Math.max(latestIdRef.current, payload.detection.id);
+          startTransition(() => {
+            setLiveDetections((current) =>
+              mergeDetections([payload.detection as Detection], current),
+            );
+          });
+          toast(describeVehicleStatus(payload.detection as Detection));
+        } else {
+          toast({
+            title:
+              payload.input_kind === "video"
+                ? "No plate validated from video"
+                : "No plate detected",
+            description:
+              payload.validation_note ??
+              "The uploaded media did not produce a plate match.",
+          });
+        }
       }
+
       queryClient.invalidateQueries({ queryKey: ["history"] });
     },
     onError: (error) => {
@@ -206,6 +312,12 @@ export default function RecognitionConsole() {
       }
     };
   }, [previewUrl]);
+
+  useEffect(() => {
+    return () => {
+      revokePreviewUrls(previewUrls);
+    };
+  }, [previewUrls]);
 
   useEffect(() => {
     if (!isVisible) {
@@ -271,17 +383,33 @@ export default function RecognitionConsole() {
   }, [authFetch, isVisible]);
 
   const activeDetection = useMemo(() => {
-    return lastResult?.detection ?? liveDetections[0] ?? null;
-  }, [lastResult?.detection, liveDetections]);
+    const batchDetections =
+      lastBatchResult?.items
+      .map((item) => item.detection)
+      .filter((detection): detection is Detection => Boolean(detection)) ?? [];
+    const batchDetection =
+      batchDetections.length > 0
+        ? batchDetections[batchDetections.length - 1]
+        : null;
+    return lastResult?.detection ?? batchDetection ?? liveDetections[0] ?? null;
+  }, [lastBatchResult?.items, lastResult?.detection, liveDetections]);
+
+  const displayProcessingMs =
+    lastBatchResult?.processing_ms ?? lastResult?.processing_ms ?? null;
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const nextFile = event.target.files?.[0] ?? null;
+    const nextFiles = Array.from(event.target.files ?? []);
+    const nextFile = nextFiles[0] ?? null;
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
     }
+    revokePreviewUrls(previewUrls);
+    setPreviewUrls(nextFiles.map((file) => URL.createObjectURL(file)));
+    setSelectedFiles(nextFiles);
     setPreviewUrl(nextFile ? URL.createObjectURL(nextFile) : null);
     setSelectedFile(nextFile);
     setLastResult(null);
+    setLastBatchResult(null);
   };
 
   const handleReset = () => {
@@ -289,11 +417,15 @@ export default function RecognitionConsole() {
     hasLoadedInitialFeedRef.current = false;
     setLiveDetections([]);
     setLastResult(null);
+    setLastBatchResult(null);
     setPollingError(null);
+    setSelectedFiles([]);
     setSelectedFile(null);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
     }
+    revokePreviewUrls(previewUrls);
+    setPreviewUrls([]);
     setPreviewUrl(null);
   };
 
@@ -322,7 +454,7 @@ export default function RecognitionConsole() {
                 Current ingest latency
               </div>
               <div className="mt-4 text-3xl font-semibold tracking-tight text-foreground">
-                {lastResult ? `${lastResult.processing_ms.toFixed(0)} ms` : "--"}
+                {displayProcessingMs ? `${displayProcessingMs.toFixed(0)} ms` : "--"}
               </div>
             </article>
 
@@ -360,9 +492,9 @@ export default function RecognitionConsole() {
                   Recognition intake
                 </h2>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Submit a still image or a short video. Video uploads are sampled
-                  into a bounded set of frames, then the console keeps the plate
-                  with the strongest repeated confidence.
+                  Submit a still image, a short video, or a batch of images.
+                  Batch uploads process all selected images together and save each
+                  validated detection separately.
                 </p>
               </div>
             </div>
@@ -370,48 +502,82 @@ export default function RecognitionConsole() {
             <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_280px]">
               <div className="rounded-2xl border border-dashed border-border bg-background/70 p-5">
                 <label className="block cursor-pointer overflow-hidden rounded-2xl border border-border bg-card/70 transition hover:border-primary/30 hover:bg-primary/5">
-                  <div className="relative aspect-[4/3] overflow-hidden">
-                    {previewUrl ? (
-                      <MediaPreview
-                        className="h-full w-full object-cover"
-                        file={selectedFile}
-                        previewUrl={previewUrl}
-                      />
-                    ) : (
-                      <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-                        <Upload className="h-10 w-10 text-primary" />
-                        <div className="mt-4 text-base font-medium text-foreground">
-                          Upload detection media
-                        </div>
-                        <div className="mt-2 text-sm text-muted-foreground">
-                          JPG, PNG, WEBP, or MP4. Short clips are sampled for the
-                          best validated frame.
-                        </div>
-                      </div>
-                    )}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/95 via-slate-950/55 to-transparent px-5 pb-5 pt-10">
-                      <div className="flex items-center gap-3">
+                  {selectedFiles.length > 1 ? (
+                    <div className="space-y-4 p-4">
+                      <div className="flex items-center gap-3 text-sm text-foreground">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-slate-950/80 text-primary">
-                          {isVideoFile(selectedFile) ? (
-                            <Film className="h-5 w-5" />
-                          ) : (
-                            <ImageIcon className="h-5 w-5" />
-                          )}
+                          <Layers3 className="h-5 w-5" />
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-white">
-                            {selectedFile ? selectedFile.name : "Select media"}
+                          <div className="font-medium">
+                            {selectedFiles.length} images selected
                           </div>
-                          <div className="text-xs uppercase tracking-[0.22em] text-slate-300">
-                            Preview updates on every upload
+                          <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                            Batch image recognition
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {selectedFiles.slice(0, 6).map((file, index) => (
+                          <PreviewTile
+                            file={file}
+                            key={`${file.name}-${index}`}
+                            previewUrl={previewUrls[index]}
+                          />
+                        ))}
+                      </div>
+                      {selectedFiles.length > 6 ? (
+                        <div className="text-sm text-muted-foreground">
+                          Showing 6 previews out of {selectedFiles.length} selected
+                          images.
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="relative aspect-[4/3] overflow-hidden">
+                      {previewUrl ? (
+                        <MediaPreview
+                          className="h-full w-full object-cover"
+                          file={selectedFile}
+                          previewUrl={previewUrl}
+                        />
+                      ) : (
+                        <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                          <Upload className="h-10 w-10 text-primary" />
+                          <div className="mt-4 text-base font-medium text-foreground">
+                            Upload detection media
+                          </div>
+                          <div className="mt-2 text-sm text-muted-foreground">
+                            JPG, PNG, WEBP, or MP4. You can also select multiple
+                            images for batch recognition.
+                          </div>
+                        </div>
+                      )}
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/95 via-slate-950/55 to-transparent px-5 pb-5 pt-10">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-slate-950/80 text-primary">
+                            {isVideoFile(selectedFile) ? (
+                              <Film className="h-5 w-5" />
+                            ) : (
+                              <ImageIcon className="h-5 w-5" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-white">
+                              {selectedFile ? selectedFile.name : "Select media"}
+                            </div>
+                            <div className="text-xs uppercase tracking-[0.22em] text-slate-300">
+                              Preview updates on every upload
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                   <input
                     accept="image/*,video/*"
                     className="hidden"
+                    multiple
                     onChange={handleFileChange}
                     type="file"
                   />
@@ -439,17 +605,21 @@ export default function RecognitionConsole() {
 
                 <Button
                   className="w-full"
-                  disabled={!selectedFile || recognizeMutation.isPending}
+                  disabled={!selectedFiles.length || recognizeMutation.isPending}
                   onClick={() => recognizeMutation.mutate()}
                   type="button"
                 >
                   {recognizeMutation.isPending
-                    ? isVideoFile(selectedFile)
-                      ? "Validating video frames..."
-                      : "Analyzing frame..."
-                    : isVideoFile(selectedFile)
-                      ? "Run video recognition"
-                      : "Run recognition"}
+                    ? selectedFiles.length > 1
+                      ? "Analyzing image batch..."
+                      : isVideoFile(selectedFile)
+                        ? "Validating video frames..."
+                        : "Analyzing frame..."
+                    : selectedFiles.length > 1
+                      ? "Run batch recognition"
+                      : isVideoFile(selectedFile)
+                        ? "Run video recognition"
+                        : "Run recognition"}
                 </Button>
 
                 <div className="rounded-2xl border border-border bg-card/70 p-4 text-sm text-muted-foreground">
@@ -458,9 +628,9 @@ export default function RecognitionConsole() {
                     Performance note
                   </div>
                   <p className="mt-2 leading-6">
-                    Images still use the fastest path. Videos are sampled into a
-                    capped frame set so we can validate repeated plates without
-                    brute-forcing the full clip.
+                    Single images stay on the fastest path. Multiple images are
+                    processed together in one batch request. Videos remain
+                    single-upload only so frame validation stays bounded.
                   </p>
                 </div>
               </div>
@@ -482,7 +652,105 @@ export default function RecognitionConsole() {
               ) : null}
             </div>
 
-            {lastResult ? (
+            {lastBatchResult ? (
+              <div className="mt-6 space-y-5">
+                <div className="grid gap-4 md:grid-cols-4">
+                  <div className="rounded-2xl border border-border bg-background/60 p-4">
+                    <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                      Total images
+                    </div>
+                    <div className="mt-3 text-2xl font-semibold text-foreground">
+                      {lastBatchResult.total_files}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-background/60 p-4">
+                    <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                      Detections saved
+                    </div>
+                    <div className="mt-3 text-2xl font-semibold text-foreground">
+                      {lastBatchResult.detected_count}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-background/60 p-4">
+                    <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                      Batch latency
+                    </div>
+                    <div className="mt-3 text-2xl font-semibold text-foreground">
+                      {lastBatchResult.processing_ms.toFixed(0)} ms
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-background/60 p-4">
+                    <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                      Camera
+                    </div>
+                    <div className="mt-3 text-lg font-semibold text-foreground">
+                      {selectedCameraId
+                        ? camerasQuery.data?.items.find(
+                            (camera) => `${camera.id}` === selectedCameraId,
+                          )?.location_name ?? "Selected camera"
+                        : "Upload console"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {lastBatchResult.items.map((item, index) => (
+                    <article
+                      className="overflow-hidden rounded-2xl border border-border bg-background/60"
+                      key={`${item.filename}-${index}`}
+                    >
+                      <div className="grid md:grid-cols-[180px_minmax(0,1fr)]">
+                        <div className="border-b border-border md:border-b-0 md:border-r">
+                          <MediaPreview
+                            className="aspect-[4/3] h-full w-full object-cover"
+                            file={selectedFiles[index] ?? null}
+                            previewUrl={previewUrls[index] ?? null}
+                          />
+                        </div>
+                        <div className="space-y-3 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="truncate text-sm font-medium text-foreground">
+                                {item.filename}
+                              </div>
+                              <div className="mt-1 text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                                Image batch item
+                              </div>
+                            </div>
+                            {item.detection ? (
+                              <StatusBadge value={item.detection.visitor_type} />
+                            ) : null}
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                                Plate
+                              </div>
+                              <div className="mt-1 font-mono text-lg font-semibold text-foreground">
+                                {item.plate_number ?? "--"}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                                Confidence
+                              </div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">
+                                {item.confidence
+                                  ? `${(item.confidence * 100).toFixed(2)}%`
+                                  : "--"}
+                              </div>
+                            </div>
+                          </div>
+                          <p className="text-sm leading-6 text-muted-foreground">
+                            {item.validation_note}
+                          </p>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : lastResult ? (
               <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
                 <div className="overflow-hidden rounded-2xl border border-border bg-background/60">
                   <MediaPreview
@@ -605,32 +873,47 @@ export default function RecognitionConsole() {
                   </div>
                 </div>
               </div>
-            ) : previewUrl ? (
+            ) : selectedFiles.length ? (
               <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
                 <div className="overflow-hidden rounded-2xl border border-border bg-background/60">
-                  <MediaPreview
-                    className="aspect-[16/10] w-full object-cover"
-                    file={selectedFile}
-                    previewUrl={previewUrl}
-                  />
+                  {selectedFiles.length > 1 ? (
+                    <div className="grid gap-3 p-4 sm:grid-cols-2">
+                      {selectedFiles.slice(0, 4).map((file, index) => (
+                        <PreviewTile
+                          file={file}
+                          key={`${file.name}-${index}`}
+                          previewUrl={previewUrls[index]}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <MediaPreview
+                      className="aspect-[16/10] w-full object-cover"
+                      file={selectedFile}
+                      previewUrl={previewUrl}
+                    />
+                  )}
                 </div>
                 <div className="rounded-2xl border border-border bg-background/60 p-5 text-sm text-muted-foreground">
                   <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
                     Pending upload
                   </div>
                   <div className="mt-3 font-medium text-foreground">
-                    {selectedFile?.name ?? "Uploaded media"}
+                    {selectedFiles.length > 1
+                      ? `${selectedFiles.length} images selected`
+                      : selectedFile?.name ?? "Uploaded media"}
                   </div>
                   <p className="mt-3 leading-6">
-                    The uploaded media remains visible after every upload so the
-                    operator can verify the exact frame or clip being analyzed.
+                    The selected media remains visible after upload so the
+                    operator can verify the exact frame, clip, or batch being
+                    analyzed.
                   </p>
                 </div>
               </div>
             ) : (
               <div className="mt-6 rounded-2xl border border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
-                Upload a frame, upload a short video, or wait for live detections
-                to begin populating the console.
+                Upload a frame, upload a short video, upload multiple images, or
+                wait for live detections to begin populating the console.
               </div>
             )}
           </section>
@@ -680,8 +963,8 @@ export default function RecognitionConsole() {
 
             {!liveDetections.length && (
               <div className="rounded-2xl border border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
-                No detections yet. The feed will populate as soon as new frames
-                or validated video clips are recognized.
+                No detections yet. The feed will populate as soon as new frames,
+                image batches, or validated video clips are recognized.
               </div>
             )}
           </div>

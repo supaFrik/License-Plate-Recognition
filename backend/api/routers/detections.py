@@ -8,12 +8,14 @@ try:
     import crud, models, schemas
     from auth import get_current_user, require_admin
     from database import get_db
-    from recognition import detect_plate_in_image, detect_plate_in_video
+    from media import save_detection_capture
+    from recognition import detect_plate_in_image, detect_plate_in_video, detect_plates_in_images
 except ImportError:
     from .. import crud, models, schemas
     from ..auth import get_current_user, require_admin
     from ..database import get_db
-    from ..recognition import detect_plate_in_image, detect_plate_in_video
+    from ..media import save_detection_capture
+    from ..recognition import detect_plate_in_image, detect_plate_in_video, detect_plates_in_images
 
 
 router = APIRouter(prefix="/detections", tags=["Detections"])
@@ -39,7 +41,72 @@ def serialize_detection(detection: models.Detection) -> schemas.Detection:
         plate_number=detection.plate_number,
         confidence=detection.confidence,
         visitor_type=detection.visitor_type,
+        input_kind=detection.input_kind,
+        capture_url=detection.capture_path,
         timestamp=detection.timestamp,
+    )
+
+
+def _save_detected_result(
+    *,
+    result: dict,
+    camera_id: int | None,
+    db: Session,
+) -> schemas.Detection | None:
+    if not result["detected"]:
+        return None
+
+    camera = get_or_create_default_camera(db) if camera_id is None else crud.get_camera(db, camera_id)
+    if camera is None:
+        raise HTTPException(status_code=404, detail="Camera not found.")
+
+    capture_path = save_detection_capture(
+        result["selected_frame_image"],
+        result["input_kind"],
+    )
+    db_detection = crud.create_detection(
+        db,
+        schemas.DetectionCreate(
+            camera_id=camera.id,
+            plate_number=result["plate_number"],
+            confidence=result["confidence"],
+            input_kind=result["input_kind"],
+            capture_path=capture_path,
+        ),
+    )
+    return serialize_detection(crud.get_detection(db, db_detection.id))
+
+
+def _build_recognize_response(
+    *,
+    filename: str,
+    content_type: str | None,
+    result: dict,
+    processing_ms: float,
+    detection: schemas.Detection | None,
+) -> schemas.DetectionRecognizeResponse:
+    return schemas.DetectionRecognizeResponse(
+        filename=filename,
+        content_type=content_type,
+        input_kind=result["input_kind"],
+        detected=result["detected"],
+        plate_number=result["plate_number"],
+        confidence=result["confidence"],
+        plate_type=result["plate_type"],
+        bbox=(
+            schemas.PlateBoundingBox(**result["bbox"])
+            if result["bbox"] is not None
+            else None
+        ),
+        image_width=result["image_width"],
+        image_height=result["image_height"],
+        sampled_frames=result["sampled_frames"],
+        analyzed_frames=result["analyzed_frames"],
+        selected_frame_index=result["selected_frame_index"],
+        validation_note=result["validation_note"],
+        processing_ms=processing_ms,
+        saved_to_db=detection is not None,
+        detection=detection,
     )
 
 
@@ -74,42 +141,17 @@ async def recognize_and_save_detection(
         raise HTTPException(status_code=500, detail=f"Detection failed: {exc}") from exc
     processing_ms = round((perf_counter() - started_at) * 1000, 2)
 
-    saved_detection = None
-    if result["detected"]:
-        camera = get_or_create_default_camera(db) if camera_id is None else crud.get_camera(db, camera_id)
-        if camera is None:
-            raise HTTPException(status_code=404, detail="Camera not found.")
-        db_detection = crud.create_detection(
-            db,
-            schemas.DetectionCreate(
-                camera_id=camera.id,
-                plate_number=result["plate_number"],
-                confidence=result["confidence"],
-            ),
-        )
-        saved_detection = serialize_detection(crud.get_detection(db, db_detection.id))
+    saved_detection = _save_detected_result(
+        result=result,
+        camera_id=camera_id,
+        db=db,
+    )
 
-    return schemas.DetectionRecognizeResponse(
+    return _build_recognize_response(
         filename=file.filename or "uploaded-image",
         content_type=file.content_type,
-        input_kind=result["input_kind"],
-        detected=result["detected"],
-        plate_number=result["plate_number"],
-        confidence=result["confidence"],
-        plate_type=result["plate_type"],
-        bbox=(
-            schemas.PlateBoundingBox(**result["bbox"])
-            if result["bbox"] is not None
-            else None
-        ),
-        image_width=result["image_width"],
-        image_height=result["image_height"],
-        sampled_frames=result["sampled_frames"],
-        analyzed_frames=result["analyzed_frames"],
-        selected_frame_index=result["selected_frame_index"],
-        validation_note=result["validation_note"],
+        result=result,
         processing_ms=processing_ms,
-        saved_to_db=saved_detection is not None,
         detection=saved_detection,
     )
 
@@ -122,6 +164,67 @@ async def recognize_detection(
     _current_user=Depends(get_current_user),
 ):
     return await recognize_and_save_detection(file=file, camera_id=camera_id, db=db)
+
+
+@router.post("/recognize/batch", response_model=schemas.DetectionRecognizeBatchResponse)
+async def recognize_detection_batch(
+    files: list[UploadFile] = File(...),
+    camera_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
+):
+    if not files:
+        raise HTTPException(status_code=400, detail="Please upload at least one image.")
+    if len(files) > 20:
+        raise HTTPException(status_code=400, detail="Batch recognition is limited to 20 images per request.")
+
+    file_payloads: list[tuple[UploadFile, bytes]] = []
+    for file in files:
+        content_type = file.content_type or ""
+        if not content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="Batch recognition supports image files only.")
+        file_bytes = await file.read()
+        if not file_bytes:
+            raise HTTPException(status_code=400, detail="One of the uploaded files is empty.")
+        file_payloads.append((file, file_bytes))
+
+    started_at = perf_counter()
+    try:
+        results = detect_plates_in_images([payload for _, payload in file_payloads])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Batch detection failed: {exc}") from exc
+
+    total_processing_ms = round((perf_counter() - started_at) * 1000, 2)
+    per_item_processing_ms = round(total_processing_ms / max(len(file_payloads), 1), 2)
+
+    responses: list[schemas.DetectionRecognizeResponse] = []
+    detected_count = 0
+    for (file, _), result in zip(file_payloads, results, strict=False):
+        saved_detection = _save_detected_result(
+            result=result,
+            camera_id=camera_id,
+            db=db,
+        )
+        if saved_detection is not None:
+            detected_count += 1
+        responses.append(
+            _build_recognize_response(
+                filename=file.filename or "uploaded-image",
+                content_type=file.content_type,
+                result=result,
+                processing_ms=per_item_processing_ms,
+                detection=saved_detection,
+            )
+        )
+
+    return schemas.DetectionRecognizeBatchResponse(
+        items=responses,
+        total_files=len(file_payloads),
+        detected_count=detected_count,
+        processing_ms=total_processing_ms,
+    )
 
 
 @router.get("", response_model=schemas.DetectionListResponse)

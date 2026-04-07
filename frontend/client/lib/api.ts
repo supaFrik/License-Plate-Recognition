@@ -50,6 +50,8 @@ export interface Detection {
   plate_number: string;
   confidence: number;
   visitor_type: VisitorType;
+  input_kind: "image" | "video";
+  capture_url?: string | null;
   timestamp: string;
 }
 
@@ -90,6 +92,13 @@ export interface DetectionRecognizeResponse {
   detection?: Detection | null;
 }
 
+export interface DetectionRecognizeBatchResponse {
+  items: DetectionRecognizeResponse[];
+  total_files: number;
+  detected_count: number;
+  processing_ms: number;
+}
+
 const rawBaseUrl =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
   "http://127.0.0.1:8000";
@@ -108,6 +117,16 @@ export function clearAccessToken() {
 
 export function getApiUrl(path: string) {
   return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+export function getMediaUrl(path: string | null | undefined) {
+  if (!path) {
+    return null;
+  }
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  return getApiUrl(path);
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}) {

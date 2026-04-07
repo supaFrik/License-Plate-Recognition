@@ -69,6 +69,8 @@ class DetectionBase(BaseModel):
     camera_id: int
     plate_number: str
     confidence: float
+    input_kind: str = "image"
+    capture_path: str | None = None
 
 
 class DetectionCreate(DetectionBase):
@@ -82,6 +84,8 @@ class Detection(BaseModel):
     plate_number: str
     confidence: float
     visitor_type: VisitorType
+    input_kind: str = "image"
+    capture_url: str | None = None
     timestamp: datetime
 
     class Config:
@@ -123,6 +127,13 @@ class DetectionRecognizeResponse(BaseModel):
     processing_ms: float
     saved_to_db: bool
     detection: Detection | None = None
+
+
+class DetectionRecognizeBatchResponse(BaseModel):
+    items: list[DetectionRecognizeResponse]
+    total_files: int
+    detected_count: int
+    processing_ms: float
 
 
 class DetectionTypeRecalculation(BaseModel):
