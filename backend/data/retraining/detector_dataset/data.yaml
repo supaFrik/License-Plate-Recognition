@@ -1,0 +1,4 @@
+path: C:/Users/aDMIN/Documents/SS2/License Plate Recognition/backend/data/retraining/detector_dataset
+train: images/train
+val: images/val
+names: ['one_row', 'two_row', 'letter', 'digit']

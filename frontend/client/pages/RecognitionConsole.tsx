@@ -12,6 +12,7 @@ import {
   Camera,
   Clock3,
   Film,
+  FolderOpen,
   Image as ImageIcon,
   Layers3,
   RefreshCcw,
@@ -19,6 +20,7 @@ import {
   Upload,
 } from "lucide-react";
 
+import ExpandableImage from "@/components/ExpandableImage";
 import Layout from "@/components/Layout";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -123,9 +125,10 @@ function MediaPreview({
   }
 
   return (
-    <img
+    <ExpandableImage
       alt={file?.name ?? "Uploaded media preview"}
-      className={className}
+      className="block h-full w-full cursor-zoom-in"
+      imageClassName={className}
       src={previewUrl}
     />
   );
@@ -140,12 +143,13 @@ function PreviewTile({
 }) {
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-border bg-card/70">
-      <img
+      <ExpandableImage
         alt={file.name}
-        className="aspect-[4/3] h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+        className="block h-full w-full cursor-zoom-in"
+        imageClassName="aspect-[4/3] h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
         src={previewUrl}
       />
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/95 via-slate-950/65 to-transparent px-3 pb-3 pt-8">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/95 via-slate-950/65 to-transparent px-3 pb-3 pt-8">
         <div className="truncate text-sm font-medium text-white">{file.name}</div>
       </div>
     </div>
@@ -170,6 +174,7 @@ export default function RecognitionConsole() {
   const [pollingError, setPollingError] = useState<string | null>(null);
   const latestIdRef = useRef(0);
   const hasLoadedInitialFeedRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const camerasQuery = useQuery({
     queryKey: ["cameras"],
@@ -577,11 +582,29 @@ export default function RecognitionConsole() {
                   <input
                     accept="image/*,video/*"
                     className="hidden"
+                    ref={fileInputRef}
                     multiple
                     onChange={handleFileChange}
                     type="file"
                   />
                 </label>
+
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <div className="text-sm text-muted-foreground">
+                    {selectedFiles.length
+                      ? `${selectedFiles.length} file${selectedFiles.length > 1 ? "s" : ""} selected`
+                      : "No media selected"}
+                  </div>
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    Choose again
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-4 rounded-2xl border border-border bg-background/60 p-5">
@@ -732,13 +755,31 @@ export default function RecognitionConsole() {
                             </div>
                             <div>
                               <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                                Confidence
+                                Final confidence
                               </div>
                               <div className="mt-1 text-lg font-semibold text-foreground">
                                 {item.confidence
                                   ? `${(item.confidence * 100).toFixed(2)}%`
                                   : "--"}
                               </div>
+                            </div>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="text-sm text-muted-foreground">
+                              Detector:{" "}
+                              <span className="font-medium text-foreground">
+                                {item.detector_confidence
+                                  ? `${(item.detector_confidence * 100).toFixed(2)}%`
+                                  : "--"}
+                              </span>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              OCR:{" "}
+                              <span className="font-medium text-foreground">
+                                {item.ocr_confidence
+                                  ? `${(item.ocr_confidence * 100).toFixed(2)}%`
+                                  : "--"}
+                              </span>
                             </div>
                           </div>
                           <p className="text-sm leading-6 text-muted-foreground">
@@ -790,11 +831,33 @@ export default function RecognitionConsole() {
 
                   <div className="rounded-2xl border border-border bg-background/60 p-4">
                     <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                      Confidence
+                      Final confidence
                     </div>
                     <div className="mt-3 text-2xl font-semibold text-foreground">
                       {lastResult.confidence
                         ? `${(lastResult.confidence * 100).toFixed(2)}%`
+                        : "--"}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-border bg-background/60 p-4">
+                    <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                      Detector
+                    </div>
+                    <div className="mt-3 text-lg font-semibold text-foreground">
+                      {lastResult.detector_confidence
+                        ? `${(lastResult.detector_confidence * 100).toFixed(2)}%`
+                        : "--"}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-border bg-background/60 p-4">
+                    <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                      OCR
+                    </div>
+                    <div className="mt-3 text-lg font-semibold text-foreground">
+                      {lastResult.ocr_confidence
+                        ? `${(lastResult.ocr_confidence * 100).toFixed(2)}%`
                         : "--"}
                     </div>
                   </div>

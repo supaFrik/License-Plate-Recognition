@@ -69,6 +69,8 @@ class DetectionBase(BaseModel):
     camera_id: int
     plate_number: str
     confidence: float
+    detector_confidence: float | None = None
+    ocr_confidence: float | None = None
     input_kind: str = "image"
     capture_path: str | None = None
 
@@ -83,6 +85,8 @@ class Detection(BaseModel):
     camera_name: str
     plate_number: str
     confidence: float
+    detector_confidence: float | None = None
+    ocr_confidence: float | None = None
     visitor_type: VisitorType
     input_kind: str = "image"
     capture_url: str | None = None
@@ -109,6 +113,14 @@ class PlateBoundingBox(BaseModel):
     y_max: int
 
 
+class OCRCharacterPrediction(BaseModel):
+    character: str
+    probability: float
+    label_type: str
+    detection_confidence: float
+    box: tuple[int, int, int, int]
+
+
 class DetectionRecognizeResponse(BaseModel):
     filename: str
     content_type: str | None = None
@@ -116,8 +128,11 @@ class DetectionRecognizeResponse(BaseModel):
     detected: bool
     plate_number: str | None = None
     confidence: float | None = None
+    detector_confidence: float | None = None
+    ocr_confidence: float | None = None
     plate_type: str | None = None
     bbox: PlateBoundingBox | None = None
+    ocr_characters: list[OCRCharacterPrediction] = Field(default_factory=list)
     image_width: int
     image_height: int
     sampled_frames: int = 1

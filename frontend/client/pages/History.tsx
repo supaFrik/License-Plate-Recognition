@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Image as ImageIcon, RefreshCcw, Video } from "lucide-react";
 
+import ExpandableImage from "@/components/ExpandableImage";
 import Layout from "@/components/Layout";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -178,12 +179,13 @@ export default function History() {
                     <td className="px-4 py-4">
                       {detection.capture_url ? (
                         <div className="group relative h-16 w-28 overflow-hidden rounded-xl border border-border bg-background/60">
-                          <img
+                          <ExpandableImage
                             alt={`Detection ${detection.plate_number}`}
-                            className="h-full w-full object-cover transition duration-200 group-hover:scale-105"
-                            src={getMediaUrl(detection.capture_url) ?? undefined}
+                            className="block h-full w-full cursor-zoom-in"
+                            imageClassName="h-full w-full object-cover transition duration-200 group-hover:scale-105"
+                            src={getMediaUrl(detection.capture_url) ?? ""}
                           />
-                          <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-slate-950/95 via-slate-950/60 to-transparent px-2 pb-2 pt-6 text-[10px] uppercase tracking-[0.2em] text-slate-200">
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-slate-950/95 via-slate-950/60 to-transparent px-2 pb-2 pt-6 text-[10px] uppercase tracking-[0.2em] text-slate-200">
                             <span className="truncate">
                               {detection.input_kind}
                             </span>
@@ -207,7 +209,18 @@ export default function History() {
                       <StatusBadge value={detection.visitor_type} />
                     </td>
                     <td className="px-4 py-4">
-                      {(detection.confidence * 100).toFixed(2)}%
+                      <div className="font-medium text-foreground">
+                        {(detection.confidence * 100).toFixed(2)}%
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        D {detection.detector_confidence
+                          ? `${(detection.detector_confidence * 100).toFixed(0)}%`
+                          : "--"}{" "}
+                        / O{" "}
+                        {detection.ocr_confidence
+                          ? `${(detection.ocr_confidence * 100).toFixed(0)}%`
+                          : "--"}
+                      </div>
                     </td>
                     <td className="px-4 py-4">{detection.camera_name}</td>
                     <td className="px-4 py-4 text-muted-foreground">

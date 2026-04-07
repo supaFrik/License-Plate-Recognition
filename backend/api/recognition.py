@@ -49,44 +49,9 @@ def _decorate_image_result(result):
     }
 
 
-def _build_frame_result(image, plate_number, plate):
-    normalized_plate = plate_number.strip().upper() if plate_number else ""
-    bbox = None
-
-    if plate:
-        (x1, y1), (x2, y2) = plate["landmark"]
-        height = plate["height"]
-        bbox = {
-            "x_min": int(x1),
-            "y_min": int(y1 - height / 2),
-            "x_max": int(x2),
-            "y_max": int(y2 + height / 2),
-        }
-
-    return {
-        "detected": bool(plate and normalized_plate),
-        "plate_number": normalized_plate or None,
-        "confidence": float(plate["conf"]) if plate else None,
-        "plate_type": plate["label"] if plate else None,
-        "bbox": bbox,
-        "image_width": int(image.shape[1]),
-        "image_height": int(image.shape[0]),
-        "selected_frame_image": image,
-    }
-
-
 def _detect_candidates_in_frames(frames):
     recognizer = get_plate_recognizer()
-    plate_numbers = recognizer.predict_batch(frames)
-    _, plates = recognizer.detect_batch(frames)
-
-    results = []
-    for index, frame in enumerate(frames):
-        plate_number = plate_numbers[index] if index < len(plate_numbers) else ""
-        plate = plates[index] if index < len(plates) else None
-        results.append(_build_frame_result(frame, plate_number, plate))
-
-    return results
+    return recognizer.recognize_batch(frames)
 
 
 def _pick_best_video_result(frame_results, sampled_indices):

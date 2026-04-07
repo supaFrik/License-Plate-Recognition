@@ -40,6 +40,8 @@ def serialize_detection(detection: models.Detection) -> schemas.Detection:
         camera_name=camera_name,
         plate_number=detection.plate_number,
         confidence=detection.confidence,
+        detector_confidence=detection.detector_confidence,
+        ocr_confidence=detection.ocr_confidence,
         visitor_type=detection.visitor_type,
         input_kind=detection.input_kind,
         capture_url=detection.capture_path,
@@ -70,6 +72,8 @@ def _save_detected_result(
             camera_id=camera.id,
             plate_number=result["plate_number"],
             confidence=result["confidence"],
+            detector_confidence=result["detector_confidence"],
+            ocr_confidence=result["ocr_confidence"],
             input_kind=result["input_kind"],
             capture_path=capture_path,
         ),
@@ -92,12 +96,18 @@ def _build_recognize_response(
         detected=result["detected"],
         plate_number=result["plate_number"],
         confidence=result["confidence"],
+        detector_confidence=result["detector_confidence"],
+        ocr_confidence=result["ocr_confidence"],
         plate_type=result["plate_type"],
         bbox=(
             schemas.PlateBoundingBox(**result["bbox"])
             if result["bbox"] is not None
             else None
         ),
+        ocr_characters=[
+            schemas.OCRCharacterPrediction(**item)
+            for item in result["ocr_characters"]
+        ],
         image_width=result["image_width"],
         image_height=result["image_height"],
         sampled_frames=result["sampled_frames"],

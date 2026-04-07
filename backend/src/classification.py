@@ -110,31 +110,50 @@ def get_letter_model(letter_ckpt, num_classes=21):
     return model
 
 
-def predict_digit(image_arrs, model, batch_size):
+def _predict_with_probabilities(image_arrs, model, batch_size, label_map=None):
     dataset = ObjectDataset(image_arrs, transform=transform)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
-    preds = []
+    results = []
     with torch.no_grad():
         for imgs in loader:
             imgs = imgs.to(device)
             outputs = model(imgs)
-            _, batch_preds = torch.max(outputs, 1)
-            preds.extend(batch_preds.cpu().numpy().tolist())
-    return preds
+            probabilities = torch.softmax(outputs, dim=1)
+            batch_probs, batch_preds = torch.max(probabilities, 1)
+
+            for pred, probability in zip(
+                batch_preds.cpu().numpy().tolist(),
+                batch_probs.cpu().numpy().tolist(),
+            ):
+                label = label_map[pred] if label_map is not None else pred
+                results.append(
+                    {
+                        "label": label,
+                        "probability": float(probability),
+                    }
+                )
+    return results
+
+
+def predict_digit(image_arrs, model, batch_size):
+    return [int(result["label"]) for result in _predict_with_probabilities(image_arrs, model, batch_size)]
+
+
+def predict_digit_with_probabilities(image_arrs, model, batch_size):
+    results = _predict_with_probabilities(image_arrs, model, batch_size)
+    return [
+        {
+            "label": str(result["label"]),
+            "probability": result["probability"],
+        }
+        for result in results
+    ]
 
 
 def predict_letter(image_arrs, model, batch_size):
-    dataset = ObjectDataset(image_arrs, transform=transform)
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    return [result["label"] for result in _predict_with_probabilities(image_arrs, model, batch_size, letter_dict)]
 
-    preds = []
-    with torch.no_grad():
-        for imgs in loader:
-            imgs = imgs.to(device)
-            outputs = model(imgs)
-            _, batch_preds = torch.max(outputs, 1)
-            preds.extend(batch_preds.cpu().numpy().tolist())
 
-    letters = [letter_dict[p] for p in preds]
-    return letters
+def predict_letter_with_probabilities(image_arrs, model, batch_size):
+    return _predict_with_probabilities(image_arrs, model, batch_size, letter_dict)

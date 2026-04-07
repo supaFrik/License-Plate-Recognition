@@ -52,6 +52,8 @@ class Detection(Base):
     camera_id = Column(Integer, ForeignKey("cameras.id"), nullable=False)
     plate_number = Column(String(50), index=True, nullable=False)
     confidence = Column(Float, nullable=False)
+    detector_confidence = Column(Float, nullable=True)
+    ocr_confidence = Column(Float, nullable=True)
     visitor_type = Column(Enum(VisitorType), nullable=False)
     input_kind = Column(String(20), default="image", nullable=False)
     capture_path = Column(String(512), nullable=True)

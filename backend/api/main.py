@@ -32,7 +32,7 @@ logging.basicConfig(level=logging.INFO)
 settings = get_settings()
 
 
-def ensure_detection_capture_columns() -> None:
+def ensure_detection_columns() -> None:
     inspector = inspect(engine)
     if "detections" not in inspector.get_table_names():
         return
@@ -53,9 +53,23 @@ def ensure_detection_capture_columns() -> None:
                     "ADD COLUMN capture_path VARCHAR(512) NULL"
                 )
             )
+        if "detector_confidence" not in existing_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE detections "
+                    "ADD COLUMN detector_confidence FLOAT NULL"
+                )
+            )
+        if "ocr_confidence" not in existing_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE detections "
+                    "ADD COLUMN ocr_confidence FLOAT NULL"
+                )
+            )
 
 
-ensure_detection_capture_columns()
+ensure_detection_columns()
 models.Base.metadata.create_all(bind=engine)
 
 for table in models.Base.metadata.tables.values():

@@ -8,3 +8,7 @@ pydantic[email]>=2.6
 python-dotenv>=1.0
 opencv-python>=4.9
 numpy>=1.26
+Pillow>=10.0
+torch>=2.2
+torchvision>=0.17
+ultralytics>=8.2

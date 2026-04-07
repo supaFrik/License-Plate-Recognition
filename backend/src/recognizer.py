@@ -1,14 +1,18 @@
 import os
 from datetime import datetime
 from collections import Counter
+import math
 import cv2
+import torch
 from ultralytics import YOLO
 
 from classification import (
-    get_digit_model, 
+    get_digit_model,
     get_letter_model,
     predict_digit,
-    predict_letter
+    predict_digit_with_probabilities,
+    predict_letter,
+    predict_letter_with_probabilities,
 )
 from utils import (
     smart_padding,
@@ -29,6 +33,7 @@ class PlateRecognizer:
         conf_thresh=0.7,
         iou_char_thresh=0.7
     ):
+        self._enable_checkpoint_compatibility()
         self.yolo_model = YOLO(yolo_ckpt)
         self.digit_model = get_digit_model(digit_ckpt)
         self.letter_model = get_letter_model(letter_ckpt)
@@ -36,6 +41,57 @@ class PlateRecognizer:
         self.exp_h_ratio = exp_h_ratio
         self.conf_thresh = conf_thresh
         self.iou_char_thresh = iou_char_thresh
+
+    @staticmethod
+    def _enable_checkpoint_compatibility():
+        try:
+            if getattr(torch.load, "_vietplateai_weights_compat", False):
+                return
+
+            original_torch_load = torch.load
+
+            def compat_torch_load(*args, **kwargs):
+                kwargs.setdefault("weights_only", False)
+                return original_torch_load(*args, **kwargs)
+
+            compat_torch_load._vietplateai_weights_compat = True
+            torch.load = compat_torch_load
+        except Exception:
+            pass
+
+    @staticmethod
+    def _compute_plate_bbox(plate):
+        if plate is None:
+            return None
+
+        (x1, y1), (x2, y2) = plate["landmark"]
+        height = plate["height"]
+        return {
+            "x_min": int(x1),
+            "y_min": int(y1 - height / 2),
+            "x_max": int(x2),
+            "y_max": int(y2 + height / 2),
+        }
+
+    @staticmethod
+    def _aggregate_ocr_confidence(probabilities):
+        if not probabilities:
+            return None
+
+        epsilon = 1e-6
+        return float(math.exp(sum(math.log(max(prob, epsilon)) for prob in probabilities) / len(probabilities)))
+
+    @staticmethod
+    def _combine_confidences(detector_confidence, ocr_confidence):
+        if detector_confidence is None and ocr_confidence is None:
+            return None
+        if detector_confidence is None:
+            return ocr_confidence
+        if ocr_confidence is None:
+            return detector_confidence
+
+        final_confidence = 0.55 * detector_confidence + 0.45 * ocr_confidence
+        return float(max(0.0, min(1.0, final_confidence)))
 
     def detect_batch(self, batch_imgs):
         batch_objects = []
@@ -99,6 +155,12 @@ class PlateRecognizer:
         return batch_objects, batch_plates
     
     def predict_batch(self, batch_inputs, batch_size=2):
+        return [
+            result["plate_number"] if result["detected"] else ""
+            for result in self.recognize_batch(batch_inputs, batch_size=batch_size)
+        ]
+
+    def recognize_batch(self, batch_inputs, batch_size=2):
         if not isinstance(batch_inputs, list):
             batch_inputs = [batch_inputs]
 
@@ -130,29 +192,95 @@ class PlateRecognizer:
 
         digit_preds = []
         if digit_imgs:
-            digit_preds = predict_digit(digit_imgs, self.digit_model, batch_size=batch_size)
+            digit_preds = predict_digit_with_probabilities(
+                digit_imgs,
+                self.digit_model,
+                batch_size=batch_size,
+            )
 
         letter_preds = []
         if letter_imgs:
-            letter_preds = predict_letter(letter_imgs, self.letter_model, batch_size=batch_size)
+            letter_preds = predict_letter_with_probabilities(
+                letter_imgs,
+                self.letter_model,
+                batch_size=batch_size,
+            )
+
+        digit_map = {ref: pred for ref, pred in zip(digit_refs, digit_preds)}
+        letter_map = {ref: pred for ref, pred in zip(letter_refs, letter_preds)}
 
         results = []
         for img_idx, objects in enumerate(batch_objects):
-            if batch_plates[img_idx] is None:
-                results.append("")
+            plate = batch_plates[img_idx]
+            image = batch_imgs[img_idx]
+
+            if plate is None:
+                results.append(
+                    {
+                        "detected": False,
+                        "plate_number": None,
+                        "confidence": None,
+                        "detector_confidence": None,
+                        "ocr_confidence": None,
+                        "plate_type": None,
+                        "bbox": None,
+                        "image_width": int(image.shape[1]),
+                        "image_height": int(image.shape[0]),
+                        "ocr_characters": [],
+                        "selected_frame_image": image,
+                    }
+                )
                 continue
 
-            plate_number = [""] * len(objects)
+            plate_chars = [""] * len(objects)
+            ocr_characters = []
+            character_probabilities = []
 
-            for (img_i, obj_i), pred in zip(digit_refs, digit_preds):
-                if img_i == img_idx:
-                    plate_number[obj_i] = str(pred)
+            for obj_idx, obj in enumerate(objects):
+                prediction = None
+                if obj["label"] == "digit":
+                    prediction = digit_map.get((img_idx, obj_idx))
+                elif obj["label"] == "letter":
+                    prediction = letter_map.get((img_idx, obj_idx))
 
-            for (img_i, obj_i), pred in zip(letter_refs, letter_preds):
-                if img_i == img_idx:
-                    plate_number[obj_i] = pred
+                if prediction is None:
+                    continue
 
-            results.append("".join(plate_number))
+                plate_chars[obj_idx] = prediction["label"]
+                character_probabilities.append(prediction["probability"])
+                ocr_characters.append(
+                    {
+                        "character": prediction["label"],
+                        "probability": float(prediction["probability"]),
+                        "label_type": obj["label"],
+                        "detection_confidence": float(obj["conf"]),
+                        "box": tuple(int(value) for value in obj["box"]),
+                    }
+                )
+
+            plate_number = "".join(plate_chars)
+            detector_confidence = float(plate["conf"])
+            ocr_confidence = self._aggregate_ocr_confidence(character_probabilities)
+            final_confidence = self._combine_confidences(
+                detector_confidence,
+                ocr_confidence,
+            )
+
+            results.append(
+                {
+                    "detected": bool(plate_number and ocr_characters),
+                    "plate_number": plate_number or None,
+                    "confidence": final_confidence,
+                    "detector_confidence": detector_confidence,
+                    "ocr_confidence": ocr_confidence,
+                    "plate_type": plate["label"],
+                    "bbox": self._compute_plate_bbox(plate),
+                    "image_width": int(image.shape[1]),
+                    "image_height": int(image.shape[0]),
+                    "ocr_characters": ocr_characters,
+                    "selected_frame_image": image,
+                }
+            )
 
         return results
     

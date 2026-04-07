@@ -49,6 +49,8 @@ export interface Detection {
   camera_name: string;
   plate_number: string;
   confidence: number;
+  detector_confidence?: number | null;
+  ocr_confidence?: number | null;
   visitor_type: VisitorType;
   input_kind: "image" | "video";
   capture_url?: string | null;
@@ -72,6 +74,14 @@ export interface PlateBoundingBox {
   y_max: number;
 }
 
+export interface OCRCharacterPrediction {
+  character: string;
+  probability: number;
+  label_type: string;
+  detection_confidence: number;
+  box: [number, number, number, number];
+}
+
 export interface DetectionRecognizeResponse {
   filename: string;
   content_type?: string | null;
@@ -79,8 +89,11 @@ export interface DetectionRecognizeResponse {
   detected: boolean;
   plate_number?: string | null;
   confidence?: number | null;
+  detector_confidence?: number | null;
+  ocr_confidence?: number | null;
   plate_type?: string | null;
   bbox?: PlateBoundingBox | null;
+  ocr_characters: OCRCharacterPrediction[];
   image_width: number;
   image_height: number;
   sampled_frames: number;

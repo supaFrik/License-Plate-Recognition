@@ -163,6 +163,8 @@ def create_detection(db: Session, detection: schemas.DetectionCreate):
         camera_id=detection.camera_id,
         plate_number=plate_number,
         confidence=detection.confidence,
+        detector_confidence=detection.detector_confidence,
+        ocr_confidence=detection.ocr_confidence,
         visitor_type=visitor_type,
         input_kind=detection.input_kind,
         capture_path=detection.capture_path,
