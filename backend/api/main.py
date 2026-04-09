@@ -6,26 +6,15 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
-try:
-    import crud, models, schemas
-    from auth import ensure_bootstrap_admin, get_current_user, require_admin, warm_detection_model
-    from config import get_settings
-    from database import engine, get_db
-    from media import MEDIA_ROOT
-    from routers.auth import router as auth_router
-    from routers.detection import router as detection_compat_router
-    from routers.detections import router as detections_router
-    from routers.vehicles import router as vehicles_router
-except ImportError:
-    from . import crud, models, schemas
-    from .auth import ensure_bootstrap_admin, get_current_user, require_admin, warm_detection_model
-    from .config import get_settings
-    from .database import engine, get_db
-    from .media import MEDIA_ROOT
-    from .routers.auth import router as auth_router
-    from .routers.detection import router as detection_compat_router
-    from .routers.detections import router as detections_router
-    from .routers.vehicles import router as vehicles_router
+from . import crud, models, schemas
+from .auth import ensure_bootstrap_admin, get_current_user, require_admin, warm_detection_model
+from .config import get_settings
+from .database import engine, get_db
+from .media import MEDIA_ROOT
+from .routers.auth import router as auth_router
+from .routers.detection import router as detection_compat_router
+from .routers.detections import router as detections_router
+from .routers.vehicles import router as vehicles_router
 
 
 logging.basicConfig(level=logging.INFO)

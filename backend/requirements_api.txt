@@ -5,6 +5,7 @@ python-multipart>=0.0.9
 PyJWT>=2.8
 argon2-cffi>=23.1
 pydantic[email]>=2.6
+email-validator>=2.1
 python-dotenv>=1.0
 opencv-python>=4.9
 numpy>=1.26

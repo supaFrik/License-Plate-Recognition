@@ -1,16 +1,10 @@
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.orm import Session
 
-try:
-    import schemas
-    from auth import get_current_user
-    from database import get_db
-    from routers.detections import recognize_and_save_detection
-except ImportError:
-    from .. import schemas
-    from ..auth import get_current_user
-    from ..database import get_db
-    from .detections import recognize_and_save_detection
+from .. import schemas
+from ..auth import get_current_user
+from ..database import get_db
+from .detections import recognize_and_save_detection
 
 
 router = APIRouter(prefix="/detection", tags=["Detection Compatibility"])

@@ -2,10 +2,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session, joinedload
 
-try:
-    import models, schemas
-except ImportError:
-    from . import models, schemas
+from . import models, schemas
 
 
 def _paginate(query, page: int, page_size: int):

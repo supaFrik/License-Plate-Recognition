@@ -1,10 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-try:
-    from config import get_settings
-except ImportError:
-    from .config import get_settings
+from .config import get_settings
 
 
 settings = get_settings()

@@ -5,32 +5,18 @@ from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-try:
-    import crud, models, schemas
-    from config import get_settings
-    from database import SessionLocal, get_db
-    from recognition import get_plate_recognizer
-    from security import (
-        create_access_token,
-        decode_access_token,
-        generate_refresh_token,
-        hash_password,
-        hash_refresh_token,
-        verify_password,
-    )
-except ImportError:
-    from . import crud, models, schemas
-    from .config import get_settings
-    from .database import SessionLocal, get_db
-    from .recognition import get_plate_recognizer
-    from .security import (
-        create_access_token,
-        decode_access_token,
-        generate_refresh_token,
-        hash_password,
-        hash_refresh_token,
-        verify_password,
-    )
+from . import crud, models, schemas
+from .config import get_settings
+from .database import SessionLocal, get_db
+from .recognition import get_plate_recognizer
+from .security import (
+    create_access_token,
+    decode_access_token,
+    generate_refresh_token,
+    hash_password,
+    hash_refresh_token,
+    verify_password,
+)
 
 
 logger = logging.getLogger(__name__)

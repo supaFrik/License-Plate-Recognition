@@ -4,10 +4,7 @@ import enum
 from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import relationship
 
-try:
-    from database import Base
-except ImportError:
-    from .database import Base
+from .database import Base
 
 
 class VehicleStatus(str, enum.Enum):

@@ -4,18 +4,11 @@ from time import perf_counter
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
-try:
-    import crud, models, schemas
-    from auth import get_current_user, require_admin
-    from database import get_db
-    from media import save_detection_capture
-    from recognition import detect_plate_in_image, detect_plate_in_video, detect_plates_in_images
-except ImportError:
-    from .. import crud, models, schemas
-    from ..auth import get_current_user, require_admin
-    from ..database import get_db
-    from ..media import save_detection_capture
-    from ..recognition import detect_plate_in_image, detect_plate_in_video, detect_plates_in_images
+from .. import crud, models, schemas
+from ..auth import get_current_user, require_admin
+from ..database import get_db
+from ..media import save_detection_capture
+from ..recognition import detect_plate_in_image, detect_plate_in_video, detect_plates_in_images
 
 
 router = APIRouter(prefix="/detections", tags=["Detections"])

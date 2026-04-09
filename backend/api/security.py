@@ -6,10 +6,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 import jwt
 
-try:
-    from config import get_settings
-except ImportError:
-    from .config import get_settings
+from .config import get_settings
 
 
 password_hasher = PasswordHasher()

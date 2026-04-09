@@ -3,32 +3,18 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
-try:
-    import crud, schemas
-    from auth import (
-        auth_rate_limiter,
-        authenticate_user,
-        build_auth_response,
-        clear_refresh_cookie,
-        get_current_user,
-        register_operator_user,
-    )
-    from config import get_settings
-    from database import get_db
-    from security import hash_refresh_token
-except ImportError:
-    from .. import crud, schemas
-    from ..auth import (
-        auth_rate_limiter,
-        authenticate_user,
-        build_auth_response,
-        clear_refresh_cookie,
-        get_current_user,
-        register_operator_user,
-    )
-    from ..config import get_settings
-    from ..database import get_db
-    from ..security import hash_refresh_token
+from .. import crud, schemas
+from ..auth import (
+    auth_rate_limiter,
+    authenticate_user,
+    build_auth_response,
+    clear_refresh_cookie,
+    get_current_user,
+    register_operator_user,
+)
+from ..config import get_settings
+from ..database import get_db
+from ..security import hash_refresh_token
 
 
 router = APIRouter(prefix="/auth", tags=["Auth"])

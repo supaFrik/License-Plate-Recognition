@@ -3,10 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-try:
-    from models import UserRole, VehicleStatus, VisitorType
-except ImportError:
-    from .models import UserRole, VehicleStatus, VisitorType
+from .models import UserRole, VehicleStatus, VisitorType
 
 
 class CameraBase(BaseModel):

@@ -1,14 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-try:
-    import crud, models, schemas
-    from auth import get_current_user, require_admin
-    from database import get_db
-except ImportError:
-    from .. import crud, models, schemas
-    from ..auth import get_current_user, require_admin
-    from ..database import get_db
+from .. import crud, models, schemas
+from ..auth import get_current_user, require_admin
+from ..database import get_db
 
 
 router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
