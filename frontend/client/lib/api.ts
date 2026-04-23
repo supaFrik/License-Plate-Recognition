@@ -1,6 +1,10 @@
 export type UserRole = "ADMIN" | "OPERATOR";
 export type VehicleStatus = "CITIZEN" | "BANNED";
 export type VisitorType = "CITIZEN" | "GUEST" | "BANNED";
+export type VehicleRegistrationRequestStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED";
 
 export interface AuthUser {
   id: number;
@@ -41,6 +45,25 @@ export interface PaginationMeta {
 export interface VehicleListResponse {
   items: Vehicle[];
   pagination: PaginationMeta;
+}
+
+export interface VehicleRegistrationRequest {
+  id: number;
+  plate_number: string;
+  owner_name: string;
+  note?: string | null;
+  admin_note?: string | null;
+  status: VehicleRegistrationRequestStatus;
+  requester_user_id: number;
+  requester_email: string;
+  reviewed_by_user_id?: number | null;
+  reviewed_by_email?: string | null;
+  created_at: string;
+  reviewed_at?: string | null;
+}
+
+export interface VehicleRegistrationRequestListResponse {
+  items: VehicleRegistrationRequest[];
 }
 
 export interface Detection {

@@ -9,6 +9,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
+  AlertTriangle,
   Camera,
   Clock3,
   Film,
@@ -23,6 +24,7 @@ import {
 import ExpandableImage from "@/components/ExpandableImage";
 import Layout from "@/components/Layout";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { usePageVisibility } from "@/hooks/use-page-visibility";
 import { toast } from "@/hooks/use-toast";
@@ -40,8 +42,26 @@ type RecognitionMutationResult =
   | { mode: "single"; payload: DetectionRecognizeResponse }
   | { mode: "batch"; payload: DetectionRecognizeBatchResponse };
 
+const LOW_CONFIDENCE_THRESHOLD = 0.9;
+
 function formatDateTime(timestamp: string) {
   return new Date(timestamp).toLocaleString();
+}
+
+function isLowConfidence(confidence?: number | null) {
+  return typeof confidence === "number" && confidence < LOW_CONFIDENCE_THRESHOLD;
+}
+
+function describeLowConfidence(detection: Pick<Detection, "plate_number" | "camera_name" | "confidence">) {
+  const confidenceText =
+    typeof detection.confidence === "number"
+      ? `${(detection.confidence * 100).toFixed(2)}%`
+      : "unknown";
+
+  return {
+    title: "Low-confidence plate detected",
+    description: `${detection.plate_number} at ${detection.camera_name} is below the 90% confidence threshold (${confidenceText}).`,
+  };
 }
 
 function describeVehicleStatus(detection: Detection) {
@@ -174,7 +194,15 @@ export default function RecognitionConsole() {
   const [pollingError, setPollingError] = useState<string | null>(null);
   const latestIdRef = useRef(0);
   const hasLoadedInitialFeedRef = useRef(false);
+  const pendingFeedResetRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const notifyDetection = (detection: Detection) => {
+    toast(describeVehicleStatus(detection));
+    if (isLowConfidence(detection.confidence)) {
+      toast(describeLowConfidence(detection));
+    }
+  };
 
   const camerasQuery = useQuery({
     queryKey: ["cameras"],
@@ -271,6 +299,16 @@ export default function RecognitionConsole() {
             variant: "destructive",
           });
         }
+
+        const lowConfidenceCount = detectedItems.filter((item) =>
+          isLowConfidence(item.confidence),
+        ).length;
+        if (lowConfidenceCount > 0) {
+          toast({
+            title: "Low-confidence detections in batch",
+            description: `${lowConfidenceCount} detection${lowConfidenceCount > 1 ? "s are" : " is"} below 90% confidence and should be reviewed.`,
+          });
+        }
       } else {
         const payload = result.payload;
         setLastResult(payload);
@@ -282,7 +320,7 @@ export default function RecognitionConsole() {
               mergeDetections([payload.detection as Detection], current),
             );
           });
-          toast(describeVehicleStatus(payload.detection as Detection));
+          notifyDetection(payload.detection as Detection);
         } else {
           toast({
             title:
@@ -334,6 +372,25 @@ export default function RecognitionConsole() {
 
     const poll = async () => {
       try {
+        if (pendingFeedResetRef.current) {
+          const baselineResponse = await authFetch("/detections/live?after_id=0&limit=1");
+          if (!baselineResponse.ok) {
+            throw new Error(await readApiError(baselineResponse));
+          }
+
+          const baselinePayload =
+            (await baselineResponse.json()) as DetectionLiveResponse;
+          if (!isActive) {
+            return;
+          }
+
+          latestIdRef.current = baselinePayload.latest_id;
+          hasLoadedInitialFeedRef.current = true;
+          pendingFeedResetRef.current = false;
+          setPollingError(null);
+          return;
+        }
+
         const limit = latestIdRef.current === 0 ? 10 : 6;
         const response = await authFetch(
           `/detections/live?after_id=${latestIdRef.current}&limit=${limit}`,
@@ -352,7 +409,7 @@ export default function RecognitionConsole() {
           setPollingError(null);
           if (hasLoadedInitialFeedRef.current) {
             payload.items.forEach((detection) => {
-              toast(describeVehicleStatus(detection));
+              notifyDetection(detection);
             });
           }
           startTransition(() => {
@@ -420,6 +477,7 @@ export default function RecognitionConsole() {
   const handleReset = () => {
     latestIdRef.current = 0;
     hasLoadedInitialFeedRef.current = false;
+    pendingFeedResetRef.current = true;
     setLiveDetections([]);
     setLastResult(null);
     setLastBatchResult(null);
@@ -438,6 +496,7 @@ export default function RecognitionConsole() {
     lastResult?.input_kind === "video"
       ? "Best validated video frame"
       : "Latest uploaded frame";
+  const activeDetectionIsLowConfidence = isLowConfidence(activeDetection?.confidence);
 
   return (
     <Layout
@@ -782,6 +841,15 @@ export default function RecognitionConsole() {
                               </span>
                             </div>
                           </div>
+                          {isLowConfidence(item.confidence) ? (
+                            <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-950 [&>svg]:text-amber-700 dark:text-amber-100 dark:[&>svg]:text-amber-300">
+                              <AlertTriangle className="h-4 w-4" />
+                              <AlertTitle>Low-confidence result</AlertTitle>
+                              <AlertDescription>
+                                This plate is below 90% confidence and should be reviewed before acting on it.
+                              </AlertDescription>
+                            </Alert>
+                          ) : null}
                           <p className="text-sm leading-6 text-muted-foreground">
                             {item.validation_note}
                           </p>
@@ -819,6 +887,16 @@ export default function RecognitionConsole() {
                         "Latest recognition metadata will appear here."}
                     </p>
                   </div>
+
+                  {isLowConfidence(lastResult.confidence) ? (
+                    <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-950 md:col-span-2 [&>svg]:text-amber-700 dark:text-amber-100 dark:[&>svg]:text-amber-300">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>Manual review recommended</AlertTitle>
+                      <AlertDescription>
+                        This recognition is below 90% confidence. Verify the plate before treating it as a final decision.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
 
                   <div className="rounded-2xl border border-border bg-background/60 p-4">
                     <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
@@ -903,6 +981,15 @@ export default function RecognitionConsole() {
               </div>
             ) : activeDetection ? (
               <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {activeDetectionIsLowConfidence ? (
+                  <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-950 md:col-span-2 xl:col-span-4 [&>svg]:text-amber-700 dark:text-amber-100 dark:[&>svg]:text-amber-300">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Low-confidence live detection</AlertTitle>
+                    <AlertDescription>
+                      {activeDetection.plate_number} is below 90% confidence and should be reviewed in the live feed.
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
                 <div className="rounded-2xl border border-border bg-background/60 p-4">
                   <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
                     Plate
@@ -1021,6 +1108,11 @@ export default function RecognitionConsole() {
                   <span>{(detection.confidence * 100).toFixed(2)}% confidence</span>
                   <span>{formatDateTime(detection.timestamp)}</span>
                 </div>
+                {isLowConfidence(detection.confidence) ? (
+                  <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-medium uppercase tracking-[0.18em] text-amber-200">
+                    Review required: below 90% confidence
+                  </div>
+                ) : null}
               </article>
             ))}
 

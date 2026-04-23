@@ -23,6 +23,12 @@ class UserRole(str, enum.Enum):
     OPERATOR = "OPERATOR"
 
 
+class VehicleRegistrationRequestStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
 class Camera(Base):
     __tablename__ = "cameras"
 
@@ -40,6 +46,34 @@ class RegisteredVehicle(Base):
     plate_number = Column(String(50), unique=True, index=True, nullable=False)
     owner_name = Column(String(100), nullable=False)
     status = Column(Enum(VehicleStatus), default=VehicleStatus.CITIZEN, nullable=False)
+
+
+class VehicleRegistrationRequest(Base):
+    __tablename__ = "vehicle_registration_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    requester_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    reviewed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    plate_number = Column(String(50), index=True, nullable=False)
+    owner_name = Column(String(100), nullable=False)
+    note = Column(String(500), nullable=True)
+    admin_note = Column(String(500), nullable=True)
+    status = Column(
+        Enum(VehicleRegistrationRequestStatus),
+        default=VehicleRegistrationRequestStatus.PENDING,
+        nullable=False,
+    )
+    reviewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    requester = relationship("User", foreign_keys=[requester_user_id])
+    reviewer = relationship("User", foreign_keys=[reviewed_by_user_id])
 
 
 class Detection(Base):

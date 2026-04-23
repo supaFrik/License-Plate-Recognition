@@ -22,24 +22,6 @@ interface LayoutProps {
   actions?: ReactNode;
 }
 
-const navigationItems = [
-  {
-    label: "Detection Console",
-    to: "/console",
-    icon: SquareTerminal,
-  },
-  {
-    label: "Vehicle Registry",
-    to: "/vehicles",
-    icon: CarFront,
-  },
-  {
-    label: "Detections History",
-    to: "/history",
-    icon: HistoryIcon,
-  },
-];
-
 export default function Layout({
   children,
   title,
@@ -50,6 +32,23 @@ export default function Layout({
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const roleValue = user?.role ?? "OPERATOR";
+  const navigationItems = [
+    {
+      label: "Detection Console",
+      to: "/console",
+      icon: SquareTerminal,
+    },
+    {
+      label: user?.role === "ADMIN" ? "Vehicle Registry" : "Plate Requests",
+      to: "/vehicles",
+      icon: CarFront,
+    },
+    {
+      label: "Detections History",
+      to: "/history",
+      icon: HistoryIcon,
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -127,7 +126,11 @@ export default function Layout({
                   type="button"
                   variant="outline"
                 >
-                  {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+                  {mobileOpen ? (
+                    <X className="h-4 w-4" />
+                  ) : (
+                    <Menu className="h-4 w-4" />
+                  )}
                 </Button>
                 <div>
                   <div className="text-sm font-semibold tracking-tight">

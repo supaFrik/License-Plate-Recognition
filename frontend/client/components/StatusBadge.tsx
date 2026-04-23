@@ -1,7 +1,15 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-type StatusValue = "ADMIN" | "OPERATOR" | "CITIZEN" | "GUEST" | "BANNED";
+type StatusValue =
+  | "ADMIN"
+  | "OPERATOR"
+  | "CITIZEN"
+  | "GUEST"
+  | "BANNED"
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED";
 
 const statusClasses: Record<StatusValue, string> = {
   ADMIN: "border-sky-500/30 bg-sky-500/10 text-sky-200",
@@ -9,6 +17,9 @@ const statusClasses: Record<StatusValue, string> = {
   CITIZEN: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
   GUEST: "border-amber-500/30 bg-amber-500/10 text-amber-100",
   BANNED: "border-rose-500/30 bg-rose-500/10 text-rose-200",
+  PENDING: "border-amber-500/30 bg-amber-500/10 text-amber-100",
+  APPROVED: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+  REJECTED: "border-rose-500/30 bg-rose-500/10 text-rose-200",
 };
 
 interface StatusBadgeProps {

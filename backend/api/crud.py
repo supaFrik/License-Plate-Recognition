@@ -13,6 +13,10 @@ def _paginate(query, page: int, page_size: int):
     return items, total
 
 
+def _normalize_plate_number(plate_number: str) -> str:
+    return plate_number.strip().upper()
+
+
 def get_camera(db: Session, camera_id: int):
     return db.query(models.Camera).filter(models.Camera.id == camera_id).first()
 
@@ -46,7 +50,7 @@ def delete_camera(db: Session, camera_id: int):
 
 
 def get_vehicle_by_plate(db: Session, plate_number: str):
-    normalized = plate_number.strip().upper()
+    normalized = _normalize_plate_number(plate_number)
     return (
         db.query(models.RegisteredVehicle)
         .filter(models.RegisteredVehicle.plate_number == normalized)
@@ -86,7 +90,8 @@ def list_vehicles(
 
 def create_registered_vehicle(db: Session, vehicle: schemas.RegisteredVehicleCreate):
     payload = vehicle.model_dump()
-    payload["plate_number"] = payload["plate_number"].strip().upper()
+    payload["plate_number"] = _normalize_plate_number(payload["plate_number"])
+    payload["owner_name"] = payload["owner_name"].strip()
     db_vehicle = models.RegisteredVehicle(**payload)
     db.add(db_vehicle)
     db.commit()
@@ -100,7 +105,7 @@ def update_registered_vehicle(
     vehicle: schemas.RegisteredVehicleUpdate,
 ):
     if vehicle.owner_name is not None:
-        db_vehicle.owner_name = vehicle.owner_name
+        db_vehicle.owner_name = vehicle.owner_name.strip()
     if vehicle.status is not None:
         db_vehicle.status = vehicle.status
     db.commit()
@@ -137,6 +142,117 @@ def delete_registered_vehicle(
     return vehicle
 
 
+def get_vehicle_registration_request_by_id(db: Session, request_id: int):
+    return (
+        db.query(models.VehicleRegistrationRequest)
+        .options(
+            joinedload(models.VehicleRegistrationRequest.requester),
+            joinedload(models.VehicleRegistrationRequest.reviewer),
+        )
+        .filter(models.VehicleRegistrationRequest.id == request_id)
+        .first()
+    )
+
+
+def get_pending_vehicle_registration_request_by_plate(db: Session, plate_number: str):
+    normalized = _normalize_plate_number(plate_number)
+    return (
+        db.query(models.VehicleRegistrationRequest)
+        .filter(
+            models.VehicleRegistrationRequest.plate_number == normalized,
+            models.VehicleRegistrationRequest.status
+            == models.VehicleRegistrationRequestStatus.PENDING,
+        )
+        .first()
+    )
+
+
+def list_vehicle_registration_requests(
+    db: Session,
+    *,
+    current_user: models.User,
+    status: models.VehicleRegistrationRequestStatus | None = None,
+):
+    query = db.query(models.VehicleRegistrationRequest).options(
+        joinedload(models.VehicleRegistrationRequest.requester),
+        joinedload(models.VehicleRegistrationRequest.reviewer),
+    )
+    if current_user.role != models.UserRole.ADMIN:
+        query = query.filter(
+            models.VehicleRegistrationRequest.requester_user_id == current_user.id
+        )
+    if status is not None:
+        query = query.filter(models.VehicleRegistrationRequest.status == status)
+    return query.order_by(
+        models.VehicleRegistrationRequest.created_at.desc(),
+        models.VehicleRegistrationRequest.id.desc(),
+    ).all()
+
+
+def create_vehicle_registration_request(
+    db: Session,
+    payload: schemas.VehicleRegistrationRequestCreate,
+    requester: models.User,
+):
+    db_request = models.VehicleRegistrationRequest(
+        requester_user_id=requester.id,
+        plate_number=_normalize_plate_number(payload.plate_number),
+        owner_name=payload.owner_name.strip(),
+        note=payload.note.strip() if payload.note else None,
+    )
+    db.add(db_request)
+    db.commit()
+    db.refresh(db_request)
+    return get_vehicle_registration_request_by_id(db, db_request.id)
+
+
+def approve_vehicle_registration_request(
+    db: Session,
+    db_request: models.VehicleRegistrationRequest,
+    reviewer: models.User,
+    *,
+    admin_note: str | None = None,
+):
+    normalized_plate = _normalize_plate_number(db_request.plate_number)
+    existing_vehicle = get_vehicle_by_plate(db, normalized_plate)
+    if existing_vehicle is not None:
+        return None
+
+    db_vehicle = models.RegisteredVehicle(
+        plate_number=normalized_plate,
+        owner_name=db_request.owner_name.strip(),
+        status=models.VehicleStatus.CITIZEN,
+    )
+    db.add(db_vehicle)
+    db.flush()
+
+    db_request.status = models.VehicleRegistrationRequestStatus.APPROVED
+    db_request.reviewed_by_user_id = reviewer.id
+    db_request.reviewed_at = datetime.utcnow()
+    db_request.admin_note = admin_note.strip() if admin_note else None
+    db_request.plate_number = normalized_plate
+    db_request.owner_name = db_request.owner_name.strip()
+
+    db.commit()
+    return get_vehicle_registration_request_by_id(db, db_request.id)
+
+
+def reject_vehicle_registration_request(
+    db: Session,
+    db_request: models.VehicleRegistrationRequest,
+    reviewer: models.User,
+    *,
+    admin_note: str | None = None,
+):
+    db_request.status = models.VehicleRegistrationRequestStatus.REJECTED
+    db_request.reviewed_by_user_id = reviewer.id
+    db_request.reviewed_at = datetime.utcnow()
+    db_request.admin_note = admin_note.strip() if admin_note else None
+
+    db.commit()
+    return get_vehicle_registration_request_by_id(db, db_request.id)
+
+
 def _resolve_visitor_type(
     db: Session,
     plate_number: str,
@@ -154,7 +270,7 @@ def _resolve_visitor_type(
 
 
 def create_detection(db: Session, detection: schemas.DetectionCreate):
-    plate_number = detection.plate_number.strip().upper()
+    plate_number = _normalize_plate_number(detection.plate_number)
     visitor_type = _resolve_visitor_type(db, plate_number)
     db_detection = models.Detection(
         camera_id=detection.camera_id,

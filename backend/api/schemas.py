@@ -3,7 +3,12 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-from .models import UserRole, VehicleStatus, VisitorType
+from .models import (
+    UserRole,
+    VehicleRegistrationRequestStatus,
+    VehicleStatus,
+    VisitorType,
+)
 
 
 class CameraBase(BaseModel):
@@ -60,6 +65,39 @@ class PaginationMeta(BaseModel):
 class VehicleListResponse(BaseModel):
     items: list[RegisteredVehicle]
     pagination: PaginationMeta
+
+
+class VehicleRegistrationRequestBase(BaseModel):
+    plate_number: str
+    owner_name: str
+    note: str | None = None
+
+
+class VehicleRegistrationRequestCreate(VehicleRegistrationRequestBase):
+    pass
+
+
+class VehicleRegistrationRequestReview(BaseModel):
+    admin_note: str | None = None
+
+
+class VehicleRegistrationRequest(BaseModel):
+    id: int
+    plate_number: str
+    owner_name: str
+    note: str | None = None
+    admin_note: str | None = None
+    status: VehicleRegistrationRequestStatus
+    requester_user_id: int
+    requester_email: str
+    reviewed_by_user_id: int | None = None
+    reviewed_by_email: str | None = None
+    created_at: datetime
+    reviewed_at: datetime | None = None
+
+
+class VehicleRegistrationRequestListResponse(BaseModel):
+    items: list[VehicleRegistrationRequest]
 
 
 class DetectionBase(BaseModel):

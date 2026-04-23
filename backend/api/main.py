@@ -14,6 +14,9 @@ from .media import MEDIA_ROOT
 from .routers.auth import router as auth_router
 from .routers.detection import router as detection_compat_router
 from .routers.detections import router as detections_router
+from .routers.vehicle_registration_requests import (
+    router as vehicle_registration_requests_router,
+)
 from .routers.vehicles import router as vehicles_router
 
 
@@ -80,6 +83,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(vehicles_router)
+app.include_router(vehicle_registration_requests_router)
 app.include_router(detections_router)
 app.include_router(detection_compat_router)
 app.mount("/media/detections", StaticFiles(directory=MEDIA_ROOT), name="detection-media")
