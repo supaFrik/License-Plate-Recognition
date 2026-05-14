@@ -1,172 +1,239 @@
-# VietPlateAI
+﻿# Headline Tech Stack
 
-VietPlateAI is a full-stack license plate recognition and access-control system built for secured facilities. It combines plate detection, operator-facing review tools, vehicle registry management, and an auditable detection history in one workspace.
+FastAPI, React, TypeScript, Vite, MySQL, SQLAlchemy, PyTorch, YOLO, OpenCV
 
-The project is designed around two goals:
+# Project Name
 
-- recognize and classify license plates quickly from uploaded images or videos
-- control who can register vehicles, review requests, and manage access status
+VietPlateAI
 
-## Core Features
+# Short Description
 
-- Plate recognition pipeline powered by YOLO, PyTorch, OpenCV, and custom OCR/classification logic
-- Detection console for image and video uploads with confidence-aware review
-- Role-based authentication with `ADMIN` and `OPERATOR` accounts
-- Vehicle registry with `CITIZEN` and `BANNED` status management
-- Plate registration request flow where users submit requests and admins approve or reject them
-- Detection history with searchable audit records and saved captures
-- Retraining workflow for improving the detector and OCR models from reviewed real-world errors
+VietPlateAI is a full-stack license plate recognition and vehicle access-control system. It combines AI-based plate detection, OCR/classification, operator authentication, vehicle registry management, registration request approval, and searchable detection history in one project.
 
-## Architecture
+# Member List
 
-### Backend
+- 2301040197 - Trịnh Quốc Việt (Leader)
+- 2301040179 - Trịnh Xuân Toán
+- 2301040182 - Trần Đức Trí
 
-- FastAPI application under `backend/api`
-- SQLAlchemy ORM with MySQL
-- JWT access token + refresh session authentication
-- Static media serving for saved detection captures
+# Tech Stack
 
-### Frontend
+## Frontend
 
-- React + TypeScript + Vite
-- React Router for protected application routes
-- TanStack Query for server state
-- Tailwind CSS and Radix UI components for the operator console
+- React 18
+- TypeScript
+- Vite
+- Tailwind CSS
+- Radix UI
+- TanStack Query
+- React Router
 
-## User Roles
+## Backend
 
-- `ADMIN`
-  - manage cameras and vehicle registry
-  - approve or reject plate registration requests
-  - update vehicle access status
-- `OPERATOR`
-  - access detection console and history
-  - submit plate registration requests to admins
-  - view the status of their own requests
+- FastAPI
+- SQLAlchemy
+- PyMySQL
+- JWT authentication
+- Argon2 password hashing
+- Python dotenv
 
-## Main Modules
+## AI / Computer Vision
 
-- `frontend/client/pages/RecognitionConsole.tsx`: upload and inspect recognition results
-- `frontend/client/pages/Vehicles.tsx`: role-based entry point for registry or request flow
-- `frontend/client/pages/History.tsx`: historical detection records
-- `backend/api/routers/detections.py`: detection APIs
-- `backend/api/routers/vehicles.py`: vehicle registry APIs
-- `backend/api/routers/vehicle_registration_requests.py`: plate registration request APIs
-- `backend/training/`: retraining scripts and data preparation workflow
+- PyTorch
+- TorchVision
+- Ultralytics YOLO
+- OpenCV
+- Pillow
+- NumPy
 
-## Local Setup
+## Database
 
-### Prerequisites
-
-- Python 3.11+
-- Node.js 18+
 - MySQL
 
-### 1. Install backend dependencies
+# Main Features
+
+- License plate recognition from uploaded images and videos
+- OCR/classification pipeline for extracting plate text
+- Detection history with confidence scores and saved captures
+- Role-based authentication with `ADMIN` and `OPERATOR`
+- Vehicle registry management for approved vehicles
+- Vehicle registration request workflow with admin approval or rejection
+- Camera management for detection sources
+- Bootstrap admin account creation on first startup
+- Retraining workflow for improving the detector and OCR models
+
+# Overall Project Structure
+
+```text
+License Plate Recognition/
+|-- backend/
+|   |-- api/                FastAPI app, routers, auth, models, CRUD, config
+|   |-- src/                Recognition pipeline and OCR/classification logic
+|   |-- training/           Retraining and dataset preparation scripts
+|   |-- checkpoints/        Model weights
+|   |-- data/               Saved media, outputs, and retraining assets
+|   |-- videos/             Sample input/output videos
+|   `-- .env                Backend environment file loaded by the API
+|-- frontend/
+|   |-- client/             React UI pages, components, hooks, and API client
+|   |-- server/             Node/Express server entry for built deployment
+|   |-- public/             Static assets
+|   |-- dist/               Frontend build output
+|   `-- .env                Frontend environment file for Vite
+|-- .env.example            Example environment variables for both apps
+`-- README.md
+```
+
+# Installation Steps And Required Tools
+
+## Required Tools
+
+- Git
+- Python 3.11 or newer
+- Node.js 18 or newer
+- npm
+- MySQL 8.x
+
+## Clone And Open The Project
 
 ```powershell
-cd "C:\Users\aDMIN\Documents\SS2\License Plate Recognition"
+git clone <your-repository-url>
+cd "License Plate Recognition"
+```
+
+## Install Backend Dependencies
+
+```powershell
 python -m pip install -r backend\requirements_api.txt
 ```
 
-### 2. Configure environment
+## Install Frontend Dependencies
 
-Create `backend/.env` if you want to override defaults. Common settings:
-
-```env
-DATABASE_URL=mysql+pymysql://root:password@localhost:3306/license_plate_recognition
-BOOTSTRAP_ADMIN_EMAIL=admin@vietplate.local
-BOOTSTRAP_ADMIN_PASSWORD=your-secure-password
-CORS_ORIGINS=http://127.0.0.1:8080,http://localhost:8080
-JWT_SECRET_KEY=replace-this-in-real-environments
-WARM_MODEL_ON_STARTUP=true
+```powershell
+cd frontend
+npm install
+cd ..
 ```
 
-Frontend API base URL can be configured with:
+# Environment Variable Setup Using `.env.example`
 
-```env
-VITE_API_BASE_URL=http://127.0.0.1:8000
+This repository includes a root-level [.env.example](./.env.example) file.
+
+Use it as a reference, then create:
+
+- `backend/.env` for backend variables
+- `frontend/.env` for frontend variables
+
+Backend env file example:
+
+```powershell
+Copy-Item .env.example backend\.env
 ```
 
-If not set, the frontend defaults to `http://127.0.0.1:8000`.
+Frontend env file example:
 
-### 3. Start the backend
+```powershell
+Copy-Item .env.example frontend\.env
+```
+
+After copying, keep only the relevant section in each file or leave the comments in place.
+
+## Main Environment Variables
+
+- `DATABASE_URL`: MySQL connection string used by the FastAPI backend
+- `BOOTSTRAP_ADMIN_EMAIL`: first admin account email created when the database has no users
+- `BOOTSTRAP_ADMIN_PASSWORD`: password for the bootstrap admin account
+- `JWT_SECRET_KEY`: secret used to sign access tokens
+- `CORS_ORIGINS`: allowed frontend origins, separated by commas
+- `WARM_MODEL_ON_STARTUP`: controls whether the recognition model loads during backend startup
+- `VITE_API_BASE_URL`: backend API base URL used by the frontend
+
+# How To Run Frontend
+
+```powershell
+cd frontend
+npm run dev
+```
+
+Default local frontend URL:
+
+```text
+http://127.0.0.1:8080
+```
+
+# How To Run Backend
 
 ```powershell
 python -m uvicorn backend.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API will:
-
-- create database tables if needed
-- warm the recognition model on startup when enabled
-- create the bootstrap admin account if the user table is empty and admin credentials are configured
-
-### 4. Start the frontend
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-## Build and Validation
-
-From `frontend/`:
-
-```powershell
-npm run typecheck
-npm run build
-```
-
-Backend syntax validation:
-
-```powershell
-python -m compileall backend\api
-```
-
-## API Summary
-
-Key backend routes include:
-
-- `/auth/*`: login, signup, refresh, logout, current user
-- `/detections/*`: recognition and detection history
-- `/vehicles/*`: registered vehicle management
-- `/vehicle-registration-requests/*`: request submission and admin approval flow
-- `/cameras/*`: camera management
-- `/health`: basic service health check
-
-## Project Structure
+Default local backend URL:
 
 ```text
-backend/
-  api/          FastAPI app, models, routers, auth, CRUD
-  src/          Recognition and OCR pipeline code
-  training/     Dataset export and retraining scripts
-  checkpoints/  Detector and classifier weights
-  data/         Saved captures, outputs, and retraining assets
-
-frontend/
-  client/       React application
-  server/       Server build entry for deployment
-  dist/         Frontend build output
+http://127.0.0.1:8000
 ```
 
-## Retraining Workflow
+Health check:
 
-The project includes a practical retraining loop based on real failed or low-confidence detections:
+```text
+GET /health
+```
 
-1. export reviewed error captures
-2. correct labels in `backend/data/retraining/error_review/manifest.csv`
-3. bootstrap or refine detector labels
-4. retrain the detector
-5. rebuild OCR datasets and retrain classifiers
+# How To Set Up Or Migrate/Seed The Database
 
-See [backend/training/README.md](backend/training/README.md) for the full workflow.
+This project does not use Alembic or a separate migration tool.
 
-## Notes
+Database setup flow:
 
-- Vehicle classification affects future detections immediately
-- Pending plate requests do not change registry state until an admin approves them
-- Saved media is exposed through `/media/detections`
-- Default settings are development-friendly and should be hardened before production deployment
+1. Create a MySQL database named `license_plate_recognition`.
+2. Update `DATABASE_URL` in `backend/.env`.
+3. Start the backend once.
+4. The backend automatically creates tables with SQLAlchemy `create_all()`.
+5. If the `detections` table is older, the backend also adds missing columns on startup.
+6. If there are no users and `BOOTSTRAP_ADMIN_EMAIL` plus `BOOTSTRAP_ADMIN_PASSWORD` are configured, the backend creates the first admin account automatically.
+
+Example MySQL setup:
+
+```sql
+CREATE DATABASE license_plate_recognition;
+```
+
+# How To Run The Full System From A Clean Machine
+
+1. Install Git, Python 3.11+, Node.js 18+, npm, and MySQL.
+2. Clone the repository.
+3. Create the MySQL database: `license_plate_recognition`.
+4. Install backend dependencies with `python -m pip install -r backend\requirements_api.txt`.
+5. Install frontend dependencies with `cd frontend` then `npm install`.
+6. Use [.env.example](./.env.example) to create `backend/.env` and `frontend/.env`.
+7. Set `DATABASE_URL`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, and `VITE_API_BASE_URL`.
+8. Start the backend with `python -m uvicorn backend.api.main:app --reload --host 0.0.0.0 --port 8000`.
+9. Start the frontend with `cd frontend` then `npm run dev`.
+10. Open `http://127.0.0.1:8080` in the browser.
+11. Sign in with the bootstrap admin account, or create a new operator account from the signup page.
+
+# Demo Account
+
+Login is required.
+
+There is no hard-coded demo account in the repository.
+
+Use one of these options:
+
+- Bootstrap admin account from `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`
+- A new operator account created through the `/signup` page
+
+Example bootstrap admin:
+
+```text
+Email: admin@vietplate.local
+Password: change-this-password
+```
+
+# Known Issues
+
+- The backend depends on local AI model checkpoints in `backend/checkpoints`, so a clean machine must have the required weights available.
+- Model warm-up on startup can make the first backend launch slow.
+- Database schema changes are handled in application startup code instead of a dedicated migration system.
+- The repository contains generated data and media under `backend/data`, which can make the source folder large.
+- Production security hardening is still needed for secrets, CORS, cookie settings, and deployment-specific configuration.
